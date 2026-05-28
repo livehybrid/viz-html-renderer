@@ -43,9 +43,23 @@ jobs:
         shell: bash
         run: |
           mkdir -p stage/viz-html-renderer
-          rsync -a --exclude '.git' --exclude '.github' --exclude 'stage' --exclude 'dist' \
-                --exclude 'node_modules' --exclude '*.tar.gz' --exclude '.DS_Store' \
+          rsync -a \
+                --exclude '.git' \
+                --exclude '.github' \
+                --exclude '.gitignore' \
+                --exclude '.gitattributes' \
+                --exclude '.editorconfig' \
+                --exclude '.prettierrc' \
+                --exclude 'stage' \
+                --exclude 'dist' \
+                --exclude 'node_modules' \
+                --exclude '*.tar.gz' \
+                --exclude '.DS_Store' \
                 ./ stage/viz-html-renderer/
+          # Normalise permissions — AppInspect rejects 775/664. App dirs 755, files 644.
+          find stage/viz-html-renderer -type d -exec chmod 755 {} +
+          find stage/viz-html-renderer -type f -exec chmod 644 {} +
+          ls -la stage/viz-html-renderer/
 
       - name: Update app version
         working-directory: stage/viz-html-renderer
