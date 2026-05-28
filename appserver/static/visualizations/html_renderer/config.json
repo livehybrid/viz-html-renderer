@@ -1,0 +1,80 @@
+{
+  "showTitleAndDescription": true,
+  "includeInToolbar": true,
+  "showDrilldown": false,
+  "hasEventHandlers": false,
+  "config": {
+    "name": "HTML Renderer",
+    "description": "Render arbitrary HTML inside a Dashboard Studio panel. Supports {{field}} interpolation from search results, theme-aware CSS variables, and optional script execution.",
+    "category": "Custom",
+    "dataContract": {
+      "requiredDataSources": [],
+      "optionalDataSources": ["primary"]
+    },
+    "size": { "initialWidth": 400, "initialHeight": 200 },
+    "optionsSchema": {
+      "htmlTemplate": {
+        "type": "string",
+        "description": "HTML to render inside the panel. Supports {{field}} interpolation from the first row of the primary data source. CSS variables --text, --bg, --accent expose the panel theme.",
+        "default": "<div style=\"padding:12px;color:var(--text);background:var(--bg)\"><h2 style=\"margin:0 0 8px;color:var(--accent)\">{{message}}</h2><p style=\"margin:0;opacity:0.7\">Edit this HTML in the panel editor.</p></div>"
+      },
+      "allowScripts": {
+        "type": "boolean",
+        "description": "DANGEROUS. When true, preserves <script> tags and on* attributes. Default false (sanitised).",
+        "default": false
+      },
+      "theme": {
+        "type": "string",
+        "enum": ["auto", "light", "dark"],
+        "description": "Visualization theme. 'auto' follows the OS preference.",
+        "default": "auto"
+      }
+    },
+    "editorConfig": [
+      {
+        "label": "HTML",
+        "open": true,
+        "layout": [
+          [
+            {
+              "editor": "editor.textArea",
+              "label": "HTML Template",
+              "option": "htmlTemplate"
+            }
+          ]
+        ]
+      },
+      {
+        "label": "Appearance",
+        "layout": [
+          [
+            {
+              "editor": "editor.select",
+              "label": "Theme",
+              "option": "theme",
+              "editorProps": {
+                "values": [
+                  { "label": "Auto (follow OS)", "value": "auto" },
+                  { "label": "Light", "value": "light" },
+                  { "label": "Dark", "value": "dark" }
+                ]
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "label": "Security",
+        "layout": [
+          [
+            {
+              "editor": "editor.checkbox",
+              "label": "Allow scripts (DANGEROUS)",
+              "option": "allowScripts"
+            }
+          ]
+        ]
+      }
+    ]
+  }
+}

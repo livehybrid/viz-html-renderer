@@ -1,0 +1,54 @@
+{
+    "schemaVersion": "2.0.0",
+    "info": {
+        "title": "HTML Renderer Visualization",
+        "id": {
+            "group": null,
+            "name": "viz-html-renderer",
+            "version": "1.0.0"
+        },
+        "author": [
+            {
+                "name": "Will Searle",
+                "email": "will@livehybrid.com",
+                "company": "LiveHybrid"
+            }
+        ],
+        "releaseDate": "2026-05-28",
+        "description": "Render arbitrary HTML inside a Splunk Dashboard Studio panel with token interpolation, theme-aware CSS variables, and optional sanitisation. Built for the Splunk Dashboard Contest 2026.",
+        "classification": {
+            "intendedAudience": "IT",
+            "categories": ["Visualization"],
+            "developmentStatus": "Production/Stable"
+        },
+        "commonInformationModels": null,
+        "license": {
+            "name": "Apache 2.0",
+            "text": "LICENSE",
+            "uri": "https://www.apache.org/licenses/LICENSE-2.0"
+        },
+        "privacyPolicy": null,
+        "releaseNotes": {
+            "name": "README.md",
+            "text": "./README.md",
+            "uri": null
+        }
+    },
+    "dependencies": null,
+    "tasks": null,
+    "inputGroups": null,
+    "incompatibleApps": null,
+    "platformRequirements": {
+        "splunk": {
+            "Enterprise": "*"
+        }
+    },
+    "supportedDeployments": [
+        "_standalone",
+        "_distributed",
+        "_search_head_clustering"
+    ],
+    "targetWorkloads": [
+        "_search_heads"
+    ]
+}

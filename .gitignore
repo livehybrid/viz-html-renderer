@@ -1,0 +1,20 @@
+# Build output (created by CI, never committed)
+dist/
+stage/
+
+# Splunk packaging
+*.tgz
+*.tar.gz
+*.spl
+
+# Node (legacy — viz no longer needs a build step, but keep guards in case anyone adds tooling later)
+node_modules/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/

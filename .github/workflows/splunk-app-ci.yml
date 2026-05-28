@@ -1,0 +1,105 @@
+name: Splunk App CI/CD
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*.*.*"
+
+permissions:
+  pull-requests: write
+  actions: write
+  checks: write
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          SHORT_COMMIT_HASH=$(git rev-parse --short HEAD)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            TAG_VERSION="1.0.0"
+          fi
+          VERSION_WITH_HASH="${TAG_VERSION}+${SHORT_COMMIT_HASH}"
+          echo "VERSION_WITH_HASH=${VERSION_WITH_HASH}" >> $GITHUB_OUTPUT
+          echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Stage app
+        shell: bash
+        run: |
+          mkdir -p stage/viz-html-renderer
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'stage' --exclude 'dist' \
+                --exclude 'node_modules' --exclude '*.tar.gz' --exclude '.DS_Store' \
+                ./ stage/viz-html-renderer/
+
+      - name: Update app version
+        working-directory: stage/viz-html-renderer
+        shell: bash
+        run: |
+          if [ -f "default/app.conf" ]; then
+            sed -i "s/^version = .*/version = ${{ steps.version.outputs.TAG_VERSION }}/g" default/app.conf
+          fi
+          if [ -f "app.manifest" ]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.TAG_VERSION }}\"/g" app.manifest
+          fi
+
+      - name: Generate package tarball
+        shell: bash
+        run: |
+          mkdir -p dist
+          cd stage
+          tar -czf ../dist/viz-html-renderer-${{ steps.version.outputs.VERSION_WITH_HASH }}.tar.gz viz-html-renderer/
+          cd ..
+          ls -la dist/
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload stage directory for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage-contents
+          path: stage/viz-html-renderer/
+
+  appinspect:
+    name: quality-appinspect
+    needs: package
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
+    with:
+      tags: "cloud,future,private_victoria"
+    secrets:
+      token: "${{ secrets.GITHUB_TOKEN }}"
+
+  quality-appinspect-api:
+    name: quality-appinspect-api
+    needs:
+      - appinspect
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
+    secrets:
+      splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
+
+  publish-gh:
+    permissions:
+      contents: write
+    needs:
+      - appinspect
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
