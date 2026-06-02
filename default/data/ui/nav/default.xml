@@ -1,0 +1,4 @@
+<nav search_view="search">
+  <view name="html_renderer_showcase" default="true" />
+  <view name="search" />
+</nav>

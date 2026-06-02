@@ -74,6 +74,19 @@
         });
     }
 
+    function executeScripts(container) {
+        var scripts = container.querySelectorAll('script');
+        for (var i = 0; i < scripts.length; i++) {
+            var old = scripts[i];
+            var s = document.createElement('script');
+            for (var a = 0; a < old.attributes.length; a++) {
+                s.setAttribute(old.attributes[a].name, old.attributes[a].value);
+            }
+            s.text = old.textContent;
+            old.parentNode.replaceChild(s, old);
+        }
+    }
+
     function setRootStyles(root, palette) {
         root.style.color = palette.text;
         root.style.background = palette.bg;
@@ -130,6 +143,11 @@
 
             setRootStyles(root, paletteFor(resolvedTheme));
             root.innerHTML = html;
+
+            // Setting innerHTML does NOT execute <script> tags. When the author
+            // has opted in via allowScripts, re-create each script node so the
+            // browser runs it (inline and external src both supported).
+            if (opts.allowScripts) executeScripts(root);
         }
 
         // Subscribe to all relevant state
