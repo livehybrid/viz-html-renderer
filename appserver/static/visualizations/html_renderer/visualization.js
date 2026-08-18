@@ -26,14 +26,59 @@
         'Configure the HTML Template in the panel editor.' +
         '</div></div>';
 
+    /*
+     * DOM-based sanitiser. The old regex version ran on the raw string, which
+     * a parser round-trip defeats (e.g. "java&#115;cript:" decodes to a live
+     * javascript: URL only AFTER innerHTML parses it). Parsing first and
+     * scrubbing the resulting tree means every check sees the same values the
+     * browser will act on. Contract when allowScripts is false:
+     *   - <script> elements are removed
+     *   - on* event-handler attributes are removed
+     *   - any attribute whose value resolves to a javascript: URL becomes "#"
+     *   - srcdoc attributes are removed (nested-iframe script smuggling)
+     *   - iframe/frame/embed src and object data must be http(s) or
+     *     scheme-relative/relative, otherwise the attribute is removed
+     */
     function sanitise(html) {
         if (!html) return '';
-        var out = String(html);
-        out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-        out = out.replace(/<script\b[^>]*\/?>/gi, '');
-        out = out.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-        out = out.replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1=$2#$2');
-        return out;
+        var tpl = document.createElement('template');
+        tpl.innerHTML = String(html);
+        scrub(tpl.content);
+        return tpl.innerHTML;
+    }
+
+    function scrub(fragment) {
+        var all = fragment.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            var tag = el.tagName ? el.tagName.toLowerCase() : '';
+            if (tag === 'script') {
+                if (el.parentNode) el.parentNode.removeChild(el);
+                continue;
+            }
+            var attrs = Array.prototype.slice.call(el.attributes);
+            for (var a = 0; a < attrs.length; a++) {
+                var name = attrs[a].name;
+                // Strip control chars and whitespace before scheme checks:
+                // browsers tolerate "java\tscript:" and "  javascript:".
+                var value = String(attrs[a].value).replace(/[\u0000-\u0020]+/g, '');
+                if (/^on/i.test(name) || name.toLowerCase() === 'srcdoc') {
+                    el.removeAttribute(name);
+                } else if (/^javascript:/i.test(value)) {
+                    el.setAttribute(name, '#');
+                } else if ((tag === 'iframe' || tag === 'frame' || tag === 'embed' || tag === 'object') &&
+                           (name.toLowerCase() === 'src' || name.toLowerCase() === 'data')) {
+                    // A scheme other than http(s) here (data:, vbscript:, ...)
+                    // is an execution vector inside the panel sandbox.
+                    if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value)) {
+                        el.removeAttribute(name);
+                    }
+                }
+            }
+            // Nested <template> content is a separate inert fragment that
+            // querySelectorAll does not descend into.
+            if (tag === 'template' && el.content) scrub(el.content);
+        }
     }
 
     function paletteFor(theme) {

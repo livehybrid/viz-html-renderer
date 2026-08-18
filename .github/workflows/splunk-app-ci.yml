@@ -55,6 +55,14 @@ jobs:
                 --exclude 'node_modules' \
                 --exclude '*.tar.gz' \
                 --exclude '.DS_Store' \
+                --exclude '/tests' \
+                --exclude '/e2e' \
+                --exclude '/docker' \
+                --exclude '/playwright.config.js' \
+                --exclude '/package.json' \
+                --exclude '/package-lock.json' \
+                --exclude 'e2e-results' \
+                --exclude '/splunkbase' \
                 ./ stage/viz-html-renderer/
           # Normalise permissions — AppInspect rejects 775/664. App dirs 755, files 644.
           find stage/viz-html-renderer -type d -exec chmod 755 {} +
@@ -93,6 +101,73 @@ jobs:
           name: stage-contents
           path: stage/viz-html-renderer/
 
+  unit-test:
+    name: unit-test (jest sanitiser + config)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Run jest
+        run: |
+          npm ci
+          npm test
+
+  e2e-playwright:
+    name: e2e-playwright (real Splunk render + sanitisation)
+    needs: package
+    # Dependabot actors get no secrets/egress guarantees; unit + appinspect still cover them.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Download staged app
+        uses: actions/download-artifact@v8
+        with:
+          name: stage-contents
+          path: stage-app
+      - name: Make staged app readable by the container splunk user
+        run: chmod -R 755 stage-app
+      - name: Start Splunk (wait for health)
+        working-directory: docker
+        env:
+          APP_DIR: ${{ github.workspace }}/stage-app
+        run: docker compose up -d --wait --wait-timeout 420
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run e2e render check
+        env:
+          SPLUNK_WEB_URL: http://localhost:8000
+          SPLUNK_MGMT_URL: https://localhost:8089
+          SPLUNK_USER: admin
+          SPLUNK_PASSWORD: Changeme1!
+        run: npx playwright test
+      - name: Upload render artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-render
+          path: e2e-results/
+          if-no-files-found: ignore
+      - name: Splunk logs on failure
+        if: failure()
+        working-directory: docker
+        run: docker compose logs --tail 200 splunk || true
+      - name: Tear down
+        if: always()
+        working-directory: docker
+        run: docker compose down -v || true
+
   appinspect:
     name: quality-appinspect
     needs: package
@@ -116,4 +191,6 @@ jobs:
       contents: write
     needs:
       - appinspect
+      - unit-test
+      - e2e-playwright
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main

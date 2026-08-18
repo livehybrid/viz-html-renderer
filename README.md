@@ -225,9 +225,23 @@ Dashboard Studio loads custom visualizations inside an `<iframe sandbox="allow-s
   so they still reach Splunk's REST API, but you have no DOM contact with the rest
   of the dashboard.
 
-**Default is `allowScripts = false`** — the viz strips `<script>` tags, `on*`
-attributes, and `javascript:` URLs. That's the right default for banners, SVG art,
-and KPI tiles. Only enable scripts for HTML you author or trust.
+**Default is `allowScripts = false`** — the viz sanitises the parsed DOM before
+anything reaches the panel:
+
+- `<script>` elements are removed (including inside nested `<template>` content),
+- `on*` event-handler attributes are removed,
+- any attribute value resolving to a `javascript:` URL is neutered to `#`
+  (entity-encoded and whitespace-obfuscated schemes included, because the check
+  runs on the **decoded** attribute value, not the raw string),
+- `srcdoc` attributes are removed (nested-iframe script smuggling),
+- `iframe` / `frame` / `embed` `src` and `object` `data` must be `http(s)` or
+  relative — `data:`, `vbscript:` and friends are dropped.
+
+The sanitiser operates on a parsed, inert document fragment rather than regexes
+over the raw string, so it sees exactly the values the browser will act on. This
+is covered by the jest suite in `tests/`, including the specific payloads that
+defeated the pre-1.0.5 regex sanitiser. That's the right default for banners,
+SVG art, and KPI tiles. Only enable scripts for HTML you author or trust.
 
 ---
 
@@ -305,6 +319,33 @@ After install the app appears in the app menu. Use the viz on **any** dashboard 
 - **Dashboard Studio** — the viz is Dashboard Studio-only. It does not render in
   Classic XML dashboards. Dashboard Studio ships as the `splunk-dashboard-studio`
   app bundled with Splunk Enterprise 10.4+ and available on Splunk Cloud Platform.
+- **Splunk Enterprise only: enable the Studio extension framework.** On
+  Enterprise the framework that loads `studio_visualization` vizzes is behind a
+  feature flag that is **off by default** — without it the panel stays empty and
+  no viz iframe is ever created. Splunk Cloud has it enabled already. On
+  Enterprise, add to `$SPLUNK_HOME/etc/system/local/web-features.conf` and
+  restart Splunk:
+
+  ```ini
+  [feature:dashboard_studio]
+  activate_studio_extension_framework = true
+  ```
+
+---
+
+## Testing
+
+Two layers, both run in CI on every push and gating every release:
+
+- **Unit (jest, jsdom)** — `npm test`. Drives the real `visualization.js`
+  through a stubbed `DashboardExtensionAPI` and asserts the sanitiser contract
+  (script stripping, handler stripping, `javascript:` neutering, embedded-document
+  vectors, the pre-1.0.5 regex bypasses) plus config/conf drift guards.
+- **End-to-end (Playwright)** — `npm run e2e`. Boots the **staged package** on a
+  real `splunk/splunk:10.4.0` container (`docker/docker-compose.yml`, with the
+  feature flag mounted), creates a Studio dashboard via REST, then asserts in a
+  headless browser that the viz renders, interpolates a live search result and
+  strips hostile payloads — and captures a render screenshot as a build artifact.
 
 ---
 
@@ -320,7 +361,9 @@ After install the app appears in the app menu. Use the viz on **any** dashboard 
 | `appserver/static/visualizations/html_renderer/visualization.js` | The viz. Plain JS; subscribes to `DashboardExtensionAPI` options/data/theme; interpolates `{{field}}`; sanitises or executes scripts. |
 | `appserver/static/visualizations/html_renderer/config.json` | Studio config: `optionsSchema` + `editorConfig` (the side-panel editor UI). |
 | `appserver/static/visualizations/html_renderer/formatter.html` | Legacy fallback; ignored by the studio framework. |
-| `.github/workflows/splunk-app-ci.yml` | CI: package → AppInspect → publish release. |
+| `tests/` | Jest unit tests: sanitiser contract + config drift guards (not shipped). |
+| `e2e/` + `docker/` + `playwright.config.js` | Playwright e2e render/sanitisation check on a real Splunk (not shipped). |
+| `.github/workflows/splunk-app-ci.yml` | CI: package → unit + e2e + AppInspect → publish release. |
 
 ---
 

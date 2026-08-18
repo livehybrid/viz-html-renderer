@@ -1,0 +1,21 @@
+{
+  "name": "viz-html-renderer-dev",
+  "version": "1.0.5",
+  "private": true,
+  "description": "Dev tooling for the viz-html-renderer Splunk app (jest sanitiser/config tests + Playwright e2e). Not shipped in the app package. The app itself has no build step: appserver/static/visualizations/html_renderer/visualization.js ships as authored.",
+  "scripts": {
+    "test": "jest",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "testMatch": [
+      "<rootDir>/tests/**/*.test.js"
+    ]
+  }
+}

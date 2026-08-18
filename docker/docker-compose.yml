@@ -1,0 +1,23 @@
+# Ephemeral Splunk for the Playwright e2e render check.
+# APP_DIR points at a STAGED copy of the app (the CI package job's output) so
+# the container sees exactly what a release tarball would contain.
+services:
+  splunk:
+    image: splunk/splunk:10.4.0
+    container_name: viz_html_splunk
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_PASSWORD: Changeme1!
+    ports:
+      - "8000:8000"
+      - "8089:8089"
+    volumes:
+      - ${APP_DIR:-../stage/viz-html-renderer}:/opt/splunk/etc/apps/viz-html-renderer
+      - ./system-local/web-features.conf:/opt/splunk/etc/system/local/web-features.conf
+    healthcheck:
+      test: ["CMD", "curl", "-sSf", "http://localhost:8000/en-GB/account/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
