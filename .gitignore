@@ -18,3 +18,7 @@ Thumbs.db
 # Editors
 .idea/
 .vscode/
+
+# Test output (never committed)
+e2e-results/
+test-results/

@@ -10,3 +10,15 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+
+  # Dev-only test tooling (jest + Playwright). Nothing here ships in the app
+  # package; the unit + e2e CI jobs gate every bump.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "test"
+    labels:
+      - "dependencies"
+      - "javascript"
