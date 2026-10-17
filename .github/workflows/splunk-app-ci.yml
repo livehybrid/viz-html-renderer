@@ -84,6 +84,22 @@ jobs:
           if [ -f "app.manifest" ]; then
             sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.TAG_VERSION }}\"/g" app.manifest
           fi
+          # Every release must change `build` as well as `version` (app.conf.spec:
+          # "Ensures browsers don't use cached copies of old static files").
+          # build = 1 on every release left upgraded users on the old cached JS.
+          # Derived from the version (1.0.8 -> 10008): reproducible, always rises.
+          V="${{ steps.version.outputs.TAG_VERSION }}"
+          IFS=. read -r MAJ MIN PAT <<< "${V%%[-+]*}"
+          if (( 10#$MIN > 99 || 10#${PAT:-0} > 99 )); then
+            echo "::error::version $V does not fit the build scheme"; exit 1
+          fi
+          BUILD=$(( 10#$MAJ * 10000 + 10#$MIN * 100 + 10#${PAT:-0} ))
+          if grep -q '^build *=' default/app.conf; then
+            sed -i "s/^build *=.*/build = ${BUILD}/" default/app.conf
+          else
+            sed -i "/^\[install\]/a build = ${BUILD}" default/app.conf
+          fi
+          grep -q "^build = ${BUILD}$" default/app.conf
 
       - name: Generate package tarball
         shell: bash
@@ -93,6 +109,31 @@ jobs:
           tar -czf ../dist/viz-html-renderer-${{ steps.version.outputs.VERSION_WITH_HASH }}.tar.gz viz-html-renderer/
           cd ..
           ls -la dist/
+
+      - name: Verify package metadata
+        # Reads the tarball itself, not the stage directory the stamp edited.
+        shell: bash
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.TAG_VERSION }}
+        run: |
+          python3 - dist/*.tar.gz <<'PY'
+          import configparser, os, sys, tarfile
+          want = os.environ["TAG_VERSION"]
+          parts = [int(p) for p in want.split("+")[0].split("-")[0].split(".")]
+          parts += [0] * (3 - len(parts))
+          expected = str(parts[0] * 10000 + parts[1] * 100 + parts[2])
+          with tarfile.open(sys.argv[1]) as tar:
+              raw = tar.extractfile("viz-html-renderer/default/app.conf").read().decode()
+          conf = configparser.ConfigParser(interpolation=None, strict=False)
+          conf.read_string(raw)
+          got = {"build": conf.get("install", "build", fallback=None),
+                 "launcher.version": conf.get("launcher", "version", fallback=None),
+                 "id.version": conf.get("id", "version", fallback=None)}
+          print(got)
+          bad = [k for k, v in got.items() if v != (expected if k == "build" else want)]
+          if bad:
+              sys.exit(f"app.conf in the package is wrong for {want}: {bad} (build should be {expected})")
+          PY
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
@@ -127,6 +168,11 @@ jobs:
     # Dependabot actors get no secrets/egress guarantees; unit + appinspect still cover them.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 10.4.0 is what the viz was built and first released on; 10.6.0 is current.
+        splunk: ["10.4.0", "10.6.0"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -141,6 +187,7 @@ jobs:
         working-directory: docker
         env:
           APP_DIR: ${{ github.workspace }}/stage-app
+          SPLUNK_IMAGE_TAG: ${{ matrix.splunk }}
         run: docker compose up -d --wait --wait-timeout 420
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -161,7 +208,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-render
+          name: e2e-render-${{ matrix.splunk }}
           path: e2e-results/
           if-no-files-found: ignore
       - name: Splunk logs on failure
@@ -199,3 +246,20 @@ jobs:
       - unit-test
       - e2e-playwright
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
+
+  publish-splunkbase:
+    # Tag runs only: needs the GitHub release (every CLI gate + e2e) and
+    # Splunk's hosted AppInspect. Uploads stay off until the repo variable
+    # SPLUNKBASE_PUBLISH_ENABLED=true.
+    needs:
+      - publish-gh
+      - quality-appinspect-api
+    permissions:
+      contents: read
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish-splunkbase.yml@main
+    with:
+      app_id: "8815"
+      splunk_versions: "10.6,10.5,10.4"
+    secrets:
+      splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}

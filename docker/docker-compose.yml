@@ -3,7 +3,7 @@
 # the container sees exactly what a release tarball would contain.
 services:
   splunk:
-    image: splunk/splunk:10.4.0
+    image: splunk/splunk:${SPLUNK_IMAGE_TAG:-10.4.0}
     container_name: viz_html_splunk
     environment:
       SPLUNK_START_ARGS: --accept-license
