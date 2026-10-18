@@ -79,10 +79,10 @@ jobs:
         shell: bash
         run: |
           if [ -f "default/app.conf" ]; then
-            sed -i "s/^version = .*/version = ${{ steps.version.outputs.TAG_VERSION }}/g" default/app.conf
+            sed -i "s/^version = .*/version = ${{ steps.version.outputs.VERSION_WITH_HASH }}/g" default/app.conf
           fi
           if [ -f "app.manifest" ]; then
-            sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.TAG_VERSION }}\"/g" app.manifest
+            sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.VERSION_WITH_HASH }}\"/g" app.manifest
           fi
           # Every release must change `build` as well as `version` (app.conf.spec:
           # "Ensures browsers don't use cached copies of old static files").
@@ -113,22 +113,25 @@ jobs:
       - name: Verify package metadata
         # Reads the tarball itself, not the stage directory the stamp edited.
         shell: bash
-        env:
-          TAG_VERSION: ${{ steps.version.outputs.TAG_VERSION }}
         run: |
+          # Expected version from the ref and git, independently of the version step.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF#refs/tags/v}"; else V="1.0.0"; fi
+          export WANT_VERSION="${V}+$(git rev-parse --short HEAD)"
           python3 - dist/*.tar.gz <<'PY'
-          import configparser, os, sys, tarfile
-          want = os.environ["TAG_VERSION"]
+          import configparser, json, os, sys, tarfile
+          want = os.environ["WANT_VERSION"]
           parts = [int(p) for p in want.split("+")[0].split("-")[0].split(".")]
           parts += [0] * (3 - len(parts))
           expected = str(parts[0] * 10000 + parts[1] * 100 + parts[2])
           with tarfile.open(sys.argv[1]) as tar:
               raw = tar.extractfile("viz-html-renderer/default/app.conf").read().decode()
+              manifest = json.load(tar.extractfile("viz-html-renderer/app.manifest"))
           conf = configparser.ConfigParser(interpolation=None, strict=False)
           conf.read_string(raw)
           got = {"build": conf.get("install", "build", fallback=None),
                  "launcher.version": conf.get("launcher", "version", fallback=None),
-                 "id.version": conf.get("id", "version", fallback=None)}
+                 "id.version": conf.get("id", "version", fallback=None),
+                 "app.manifest": manifest["info"]["id"]["version"]}
           print(got)
           bad = [k for k, v in got.items() if v != (expected if k == "build" else want)]
           if bad:
