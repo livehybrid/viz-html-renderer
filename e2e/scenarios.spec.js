@@ -48,6 +48,19 @@ const MXSS = {
     html_e2e_mxss2: `<form><math><mtext></form><form><mglyph><style></math><img src onerror="${pw('mxss2')}">`,
 };
 
+// Meta refresh: no script needed, the browser navigates the viz frame by
+// itself. Each variant targets its own marker URL so a navigation names the
+// variant that caused it. The 3 s delay lets the panel be found first, so a
+// regression fails on the navigation assertion, not on a render timeout.
+const metaTo = (name) => `/en-GB/static/app/${APP}/PWNED_meta_${name}`;
+const META_REFRESH =
+    '<div id="e2e-meta">' +
+    `<meta http-equiv="refresh" content="3;url=${metaTo('plain')}">` +
+    `<META HTTP-EQUIV=REFRESH CONTENT=3;URL=${metaTo('upper')}>` +
+    `<svg><foreignObject><meta http-equiv=" Refresh " content='3; url=${metaTo('svg')}'></foreignObject></svg>` +
+    '<p id="meta-end">end</p>' +
+    '</div>';
+
 function view(title, options, query) {
     return {
         version: '2',
@@ -77,6 +90,10 @@ const VIEWS = {
     // allowScripts as the string "false" is truthy: it used to switch the sanitiser off.
     html_e2e_allow_false_string: view('HTML allowScripts string',
         { allowScripts: 'false', htmlTemplate: `<div id="e2e-strfalse"><script>${pw('strfalse')}</script><img src="x" onerror="${pw('strfalseimg')}"></div>` }),
+    html_e2e_meta: view('HTML meta refresh', { htmlTemplate: META_REFRESH }),
+    // Positive control for the navigation channel: unsanitised, the frame does go.
+    html_e2e_meta_control: view('HTML meta control',
+        { allowScripts: true, htmlTemplate: `<p id="e2e-meta-control">ctl</p><meta http-equiv="refresh" content="1;url=${metaTo('control')}">` }),
     // Positive control: the channel works when scripts are really allowed.
     html_e2e_control: view('HTML control',
         { allowScripts: true, htmlTemplate: '<div id="e2e-control"><script>console.log(\'CONTROL:ran\');window.__control=1</script></div>' }),
@@ -162,6 +179,34 @@ test('hostile template: no payload executes, including on click', async ({ page 
         };
     });
     expect(left).toEqual({ scripts: 0, handlers: 0, srcdoc: 0, jsUrls: 0 });
+    expect(v.vizErrors()).toEqual([]);
+});
+
+// Every frame navigation to a marker URL, recorded by the page, not the viz.
+function metaNavigations(page) {
+    const seen = [];
+    page.on('framenavigated', (f) => { if (/PWNED_meta_/.test(f.url())) seen.push(f.url().replace(/^.*PWNED_meta_/, '')); });
+    return seen;
+}
+
+test('positive control: an unsanitised meta refresh does navigate the panel', async ({ page }) => {
+    const seen = metaNavigations(page);
+    await page.goto('/en-GB/account/login');
+    await page.fill('input[name="username"]', USER);
+    await page.fill('input[name="password"]', PASS);
+    await page.press('input[name="password"]', 'Enter');
+    await page.waitForURL((u) => /^\/[^/]+\/(app|launcher|home)\b/.test(new URL(u).pathname), { timeout: 60000 });
+    await page.goto(`/en-GB/app/${APP}/html_e2e_meta_control`);
+    await expect.poll(() => seen, { timeout: 120000 }).toContain('control');
+});
+
+test('meta refresh: the panel does not navigate itself', async ({ page }) => {
+    const seen = metaNavigations(page);
+    const v = await openView(page, 'html_e2e_meta', '#meta-end');
+    await page.waitForTimeout(8000); // well past the 3 s refresh delay
+    expect(seen).toEqual([]);
+    expect(await v.frame.$('#meta-end'), 'the panel was navigated away').not.toBeNull();
+    expect(await v.frame.evaluate(() => document.getElementById('e2e-meta').querySelectorAll('meta').length)).toBe(0);
     expect(v.vizErrors()).toEqual([]);
 });
 

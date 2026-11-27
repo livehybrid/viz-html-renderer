@@ -238,7 +238,11 @@ anything reaches the panel:
 - `iframe` / `frame` / `embed` `src` and `object` `data` must be `http(s)` or
   relative — `data:`, `vbscript:` and friends are dropped,
 - SVG `<animate>` / `<set>` elements that target `href` are removed (they can
-  write a `javascript:` URL after sanitising, e.g. `values="x;javascript:..."`).
+  write a `javascript:` URL after sanitising, e.g. `values="x;javascript:..."`),
+- `<meta>` elements are removed, all of them: `<meta http-equiv="refresh">`
+  navigates the panel to any URL without a line of script (any case, spacing or
+  quoting, and also inside SVG, `foreignObject` and nested `<template>`s), and
+  no other `<meta>` (charset, viewport, CSP) has a use inside a panel.
 
 The sanitiser operates on a parsed, inert document fragment rather than regexes
 over the raw string, so it sees exactly the values the browser will act on. The

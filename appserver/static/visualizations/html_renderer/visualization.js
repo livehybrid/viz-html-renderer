@@ -40,6 +40,10 @@
      *     scheme-relative/relative, otherwise the attribute is removed
      *   - SVG <animate>/<set> that target href are removed (they can write a
      *     javascript: URL at runtime, e.g. values="x;javascript:...")
+     *   - <meta> elements are removed, all of them: one inserted into the
+     *     live document with http-equiv="refresh" navigates the panel frame
+     *     (to any URL), and nothing else a meta can say (charset, viewport,
+     *     CSP, default-style) belongs to a panel fragment either
      *
      * Returns the scrubbed FRAGMENT, never a string. Serialising the clean
      * tree and parsing it again with innerHTML is not a round trip: markup
@@ -66,7 +70,7 @@
         for (var i = 0; i < all.length; i++) {
             var el = all[i];
             var tag = el.tagName ? el.tagName.toLowerCase() : '';
-            if (tag === 'script' || ((tag === 'animate' || tag === 'set') &&
+            if (tag === 'script' || tag === 'meta' || ((tag === 'animate' || tag === 'set') &&
                     /href$/i.test(String(el.getAttribute('attributeName') || '').trim()))) {
                 if (el.parentNode) el.parentNode.removeChild(el);
                 continue;

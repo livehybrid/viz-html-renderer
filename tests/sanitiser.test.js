@@ -395,3 +395,53 @@ describe('wrong-type options', () => {
         expect(app.root.textContent).toContain('Configure the HTML Template');
     });
 });
+
+describe('meta refresh: a panel never redirects itself', () => {
+    // A <meta http-equiv="refresh"> inserted into the live document navigates
+    // the viz frame (Chromium honours it outside <head>), so the template can
+    // send the panel to any URL with no script at all. Every <meta> is
+    // removed. Asserted on the serialised output, a route the sanitiser never
+    // consults (it walks elements by tag name). The serialiser includes
+    // <template> content, so the nested cases are covered by the same check.
+    const URL = 'https://evil.example/landing';
+    const META = {
+        'lowercase, double quotes': `<meta http-equiv="refresh" content="0;url=${URL}">`,
+        'uppercase, unquoted': `<META HTTP-EQUIV=REFRESH CONTENT=0;URL=${URL}>`,
+        'mixed case, padded, single quotes': `<meta   Http-Equiv = ' ReFresh '   content = '0 ; url = ${URL}' >`,
+        'content first, self-closing': `<meta content="0;url=${URL}" http-equiv="refresh"/>`,
+        'javascript: target': '<meta http-equiv="refresh" content="0;url=javascript:alert(1)">',
+        'entity-encoded attribute values': '<meta http-equiv="&#114;efresh" content="0;url=java&#115;cript:alert(1)">',
+        'inside svg (breaks out of foreign content)': `<svg><meta http-equiv="refresh" content="0;url=${URL}"></svg>`,
+        'inside svg foreignObject': `<svg><foreignObject><div><meta http-equiv="refresh" content="0;url=${URL}"></div></foreignObject></svg>`,
+        'inside nested templates': `<template><div><template><meta http-equiv="refresh" content="0;url=${URL}"></template></div></template>`,
+    };
+
+    test.each(Object.entries(META))('%s is removed', (_, payload) => {
+        const out = render(`<p id="mr-keep">keep</p>${payload}<p id="mr-end">end</p>`);
+        expect(out).toContain('<p id="mr-keep">keep</p>');
+        expect(out).toContain('<p id="mr-end">end</p>');
+        expect(out).not.toMatch(/<meta/i);
+        expect(out).not.toMatch(/refresh|url\s*=/i);
+    });
+
+    test('a meta refresh arriving in a search field is removed', () => {
+        const out = render('<div id="f">{{evil}}</div><p>keep</p>', {
+            row: { evil: `<meta http-equiv="refresh" content="0;url=${URL}"><b>bold</b>` },
+        });
+        expect(out).toContain('<b>bold</b>');
+        expect(out).not.toMatch(/<meta|evil\.example/i);
+    });
+
+    test('a non-refresh meta is removed too (no meta has a use in a panel)', () => {
+        const out = render('<meta charset="utf-8"><meta name="viewport" content="width=device-width"><p>keep</p>');
+        expect(out).toContain('<p>keep</p>');
+        expect(out).not.toMatch(/<meta/i);
+    });
+
+    test('scope: with allowScripts true the template is not sanitised, meta included', () => {
+        // Not a guard (it passes with or without the fix): it pins that the
+        // opt-out stays a full opt-out, as documented for allowScripts.
+        const out = render(`<meta http-equiv="refresh" content="3600;url=${URL}"><p>keep</p>`, { allowScripts: true });
+        expect(out).toMatch(/<meta http-equiv="refresh"/i);
+    });
+});
