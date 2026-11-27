@@ -266,14 +266,29 @@ describe('former regex bypasses, closed by the DOM sanitiser', () => {
         // sanitiser reads the DECODED attribute value, so it catches it.
         // Confirmed by reading the parsed href back off the element.
         const app = boot({ options: { htmlTemplate: '<a id="t" href="java&#115;cript:alert(1)">x</a>' } });
-        const href = app.root.querySelector('#t').getAttribute('href');
-        expect(href).toBe('#');
+        expect(app.root.querySelector('#t').hasAttribute('href')).toBe(false);
     });
 
     test('a tab inside the scheme is neutered', () => {
         const app = boot({ options: { htmlTemplate: '<a id="t" href="java&#9;script:alert(1)">x</a>' } });
-        const href = app.root.querySelector('#t').getAttribute('href');
-        expect(href).toBe('#');
+        expect(app.root.querySelector('#t').hasAttribute('href')).toBe(false);
+    });
+});
+
+describe('neutered links are inert', () => {
+    // A neutered javascript: URL used to become href="#". The viz iframe's
+    // document URL is a Splunk page, so clicking "#" navigated the panel away
+    // (Splunk's "browser not supported" page in the e2e run). The attribute
+    // is removed instead, so the link text stays and clicking does nothing.
+    test.each([
+        ['href', '<a id="t" href="javascript:alert(1)">x</a>'],
+        ['entity-encoded href', '<a id="t" href="java&#115;cript:alert(1)">x</a>'],
+        ['formaction', '<button id="t" formaction="javascript:alert(1)">x</button>'],
+    ])('%s: attribute removed, element kept', (_, html) => {
+        const app = boot({ options: { htmlTemplate: html } });
+        const el = app.root.querySelector('#t');
+        expect(el).not.toBeNull();
+        expect([...el.attributes].map((a) => a.name)).toEqual(['id']);
     });
 });
 

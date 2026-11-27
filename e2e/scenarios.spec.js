@@ -143,6 +143,9 @@ test('hostile template: no payload executes, including on click', async ({ page 
     await page.waitForTimeout(3000); // let image errors, iframes and animations settle
     expect(pwned(v)).toEqual([]);
     expect(await flags(v)).toEqual([]);
+    // The clicks did not navigate the panel away: a neutered link rewritten to
+    // href="#" loaded a Splunk error page into the viz iframe.
+    expect(await v.frame.$('#hostile-end'), 'the panel was navigated away by a click').not.toBeNull();
     // And structurally: nothing executable is left in the live DOM.
     const left = await v.frame.evaluate(() => {
         const box = document.getElementById('e2e-hostile');

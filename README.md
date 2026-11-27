@@ -230,9 +230,10 @@ anything reaches the panel:
 
 - `<script>` elements are removed (including inside nested `<template>` content),
 - `on*` event-handler attributes are removed,
-- any attribute value resolving to a `javascript:` URL is neutered to `#`
-  (entity-encoded and whitespace-obfuscated schemes included, because the check
-  runs on the **decoded** attribute value, not the raw string),
+- any attribute value resolving to a `javascript:` URL is removed, entity-encoded
+  and whitespace-obfuscated schemes included, because the check runs on the
+  **decoded** attribute value, not the raw string (it used to be rewritten to
+  `#`, but a click on `#` navigated the panel iframe away and blanked it),
 - `srcdoc` attributes are removed (nested-iframe script smuggling),
 - `iframe` / `frame` / `embed` `src` and `object` `data` must be `http(s)` or
   relative — `data:`, `vbscript:` and friends are dropped,
