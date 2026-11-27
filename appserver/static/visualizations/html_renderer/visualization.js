@@ -34,17 +34,31 @@
      * browser will act on. Contract when allowScripts is false:
      *   - <script> elements are removed
      *   - on* event-handler attributes are removed
-     *   - any attribute whose value resolves to a javascript: URL becomes "#"
+     *   - any attribute whose value resolves to a javascript: URL is removed
      *   - srcdoc attributes are removed (nested-iframe script smuggling)
      *   - iframe/frame/embed src and object data must be http(s) or
      *     scheme-relative/relative, otherwise the attribute is removed
+     *   - SVG <animate>/<set> that target href are removed (they can write a
+     *     javascript: URL at runtime, e.g. values="x;javascript:...")
+     *
+     * Returns the scrubbed FRAGMENT, never a string. Serialising the clean
+     * tree and parsing it again with innerHTML is not a round trip: markup
+     * such as <math><mtext><table><mglyph><style> or nested <form>s parses
+     * differently the second time and turns inert text into a live
+     * <img onerror> (mutation XSS). The nodes that were checked are the
+     * nodes that get inserted.
      */
     function sanitise(html) {
-        if (!html) return '';
+        var tpl = document.createElement('template');
+        tpl.innerHTML = html ? String(html) : '';
+        scrub(tpl.content);
+        return tpl.content;
+    }
+
+    function parse(html) {
         var tpl = document.createElement('template');
         tpl.innerHTML = String(html);
-        scrub(tpl.content);
-        return tpl.innerHTML;
+        return tpl.content;
     }
 
     function scrub(fragment) {
@@ -52,7 +66,8 @@
         for (var i = 0; i < all.length; i++) {
             var el = all[i];
             var tag = el.tagName ? el.tagName.toLowerCase() : '';
-            if (tag === 'script') {
+            if (tag === 'script' || ((tag === 'animate' || tag === 'set') &&
+                    /href$/i.test(String(el.getAttribute('attributeName') || '').trim()))) {
                 if (el.parentNode) el.parentNode.removeChild(el);
                 continue;
             }
@@ -65,7 +80,10 @@
                 if (/^on/i.test(name) || name.toLowerCase() === 'srcdoc') {
                     el.removeAttribute(name);
                 } else if (/^javascript:/i.test(value)) {
-                    el.setAttribute(name, '#');
+                    // Removed, not rewritten to "#": the panel document's
+                    // URL is a Splunk page, so a click on href="#" navigated
+                    // the viz iframe away and blanked the panel.
+                    el.removeAttribute(name);
                 } else if ((tag === 'iframe' || tag === 'frame' || tag === 'embed' || tag === 'object') &&
                            (name.toLowerCase() === 'src' || name.toLowerCase() === 'data')) {
                     // A scheme other than http(s) here (data:, vbscript:, ...)
@@ -169,7 +187,12 @@
             // handleDataSourcesUpdate which call setIframeState(KEY, event.data).
             var raw = state.options || {};
             var opts = raw.options || raw;  // accept both nested and flat shapes
-            var template = opts.htmlTemplate || DEFAULT_TEMPLATE;
+            // Only a non-empty string is a template; anything else (a number,
+            // an object from hand-edited JSON) shows the placeholder.
+            var template = (typeof opts.htmlTemplate === 'string' && opts.htmlTemplate) || DEFAULT_TEMPLATE;
+            // Strictly true: the string "false" is truthy and used to switch
+            // the sanitiser OFF.
+            var allowScripts = opts.allowScripts === true || opts.allowScripts === 'true';
             var themeOverride = opts.theme;
 
             // Merge: panel theme option > dashboard theme > 'auto'
@@ -184,15 +207,16 @@
             var html = interpolate(template, row);
             // Remove debug log on success path
 
-            if (!opts.allowScripts) html = sanitise(html);
+            var content = allowScripts ? parse(html) : sanitise(html);
 
             setRootStyles(root, paletteFor(resolvedTheme));
-            root.innerHTML = html;
+            root.textContent = '';
+            root.appendChild(content);
 
             // Setting innerHTML does NOT execute <script> tags. When the author
             // has opted in via allowScripts, re-create each script node so the
             // browser runs it (inline and external src both supported).
-            if (opts.allowScripts) executeScripts(root);
+            if (allowScripts) executeScripts(root);
         }
 
         // Subscribe to all relevant state
