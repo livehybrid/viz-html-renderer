@@ -38,6 +38,11 @@ const HOSTILE =
 // Mutation XSS: inert on the first parse, a live <img onerror> on a re-parse
 // (the shipped viz serialised the scrubbed tree and re-parsed it). Each sits
 // alone at the end of its template: they leave elements open by design.
+// mxss2 (nested form) is the browser guard: it went red against the
+// re-serialising mutant on both legs. mxss1 could NOT go red in current
+// Chromium, which escapes < and > inside attribute values when serialising
+// and so defuses this attribute-borne payload itself; it stays as a check for
+// other engines, and jest (parse5, no such escaping) is its real guard.
 const MXSS = {
     html_e2e_mxss1: `<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;img src=1 onerror=&quot;${pw('mxss1')}&quot;&gt;">`,
     html_e2e_mxss2: `<form><math><mtext></form><form><mglyph><style></math><img src onerror="${pw('mxss2')}">`,
