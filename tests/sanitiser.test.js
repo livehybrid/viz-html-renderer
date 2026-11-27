@@ -308,3 +308,75 @@ describe('embedded-document vectors', () => {
         expect(app.root.querySelector('#t').getAttribute('src')).toBe('/static/app/thing.svg');
     });
 });
+
+describe('mutation XSS: the checked nodes are the inserted nodes', () => {
+    // Both payloads are inert in the first parse and became a live
+    // <img onerror> when the scrubbed tree was serialised and re-parsed by
+    // innerHTML (the shipped behaviour up to this fix). Assert on the live
+    // DOM, never on the serialised string: the safe output still contains the
+    // text "onerror" inside a <style> element.
+    const MXSS = {
+        'math/mglyph/style': '<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;img src=1 onerror=alert(1)&gt;">',
+        'nested form': '<form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>',
+    };
+    test.each(Object.entries(MXSS))('%s leaves no element with an event handler', (_, payload) => {
+        const app = boot({ options: { htmlTemplate: payload } });
+        expect(app.root.childNodes.length).toBeGreaterThan(0); // it rendered
+        expect(app.root.querySelectorAll('img[onerror], [onerror]').length).toBe(0);
+    });
+});
+
+describe('SVG payloads', () => {
+    test('an <animate> that writes a javascript: href via values is removed', () => {
+        const app = boot({ options: { htmlTemplate:
+            '<svg><a><animate attributeName="href" values="x;javascript:alert(1)"/><text y="20">go</text></a></svg>' } });
+        expect(app.root.querySelector('svg a text')).not.toBeNull();
+        expect(app.root.querySelectorAll('animate, set').length).toBe(0);
+    });
+
+    test('a <set> on xlink:href is removed', () => {
+        const app = boot({ options: { htmlTemplate:
+            '<svg><a><set attributeName="xlink:href" to="&#106;avascript:alert(1)"/><text>go</text></a></svg>' } });
+        expect(app.root.querySelectorAll('set').length).toBe(0);
+    });
+
+    test('an <animate> of a harmless attribute survives', () => {
+        const app = boot({ options: { htmlTemplate:
+            '<svg><circle r="5"><animate attributeName="r" values="5;9;5" dur="1s"/></circle></svg>' } });
+        expect(app.root.querySelectorAll('circle animate').length).toBe(1);
+    });
+
+    test('svg onload and an svg <script> are stripped', () => {
+        const app = boot({ options: { htmlTemplate: '<svg onload="alert(1)"><script>alert(2)</script><rect/></svg>' } });
+        expect(app.root.querySelector('svg rect')).not.toBeNull();
+        expect(app.root.querySelector('svg').hasAttribute('onload')).toBe(false);
+        expect(app.root.querySelectorAll('script').length).toBe(0);
+    });
+});
+
+describe('wrong-type options', () => {
+    test('allowScripts "false" (a truthy string) keeps the sanitiser ON', () => {
+        const app = boot({ options: { htmlTemplate: '<b id="x" onclick="alert(1)">x</b><script>1</script>', allowScripts: 'false' } });
+        expect(app.root.querySelector('#x')).not.toBeNull();
+        expect(app.root.querySelector('#x').hasAttribute('onclick')).toBe(false);
+        expect(app.root.querySelectorAll('script').length).toBe(0);
+    });
+
+    test('allowScripts 1 or "yes" keeps the sanitiser ON', () => {
+        for (const allowScripts of [1, 'yes', {}]) {
+            const app = boot({ options: { htmlTemplate: '<b id="x" onclick="alert(1)">x</b>', allowScripts } });
+            expect([allowScripts, app.root.querySelector('#x').hasAttribute('onclick')]).toEqual([allowScripts, false]);
+        }
+    });
+
+    test('allowScripts "true" (string) is honoured like true', () => {
+        const app = boot({ options: { htmlTemplate: '<b id="x" onclick="void 0">x</b>', allowScripts: 'true' } });
+        expect(app.root.querySelector('#x').hasAttribute('onclick')).toBe(true);
+    });
+
+    test('a non-string htmlTemplate shows the placeholder, not "[object Object]"', () => {
+        const app = boot({ options: { htmlTemplate: { a: 1 } } });
+        expect(app.root.textContent).not.toContain('[object Object]');
+        expect(app.root.textContent).toContain('Configure the HTML Template');
+    });
+});

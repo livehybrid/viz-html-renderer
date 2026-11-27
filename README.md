@@ -235,10 +235,24 @@ anything reaches the panel:
   runs on the **decoded** attribute value, not the raw string),
 - `srcdoc` attributes are removed (nested-iframe script smuggling),
 - `iframe` / `frame` / `embed` `src` and `object` `data` must be `http(s)` or
-  relative — `data:`, `vbscript:` and friends are dropped.
+  relative — `data:`, `vbscript:` and friends are dropped,
+- SVG `<animate>` / `<set>` elements that target `href` are removed (they can
+  write a `javascript:` URL after sanitising, e.g. `values="x;javascript:..."`).
 
 The sanitiser operates on a parsed, inert document fragment rather than regexes
-over the raw string, so it sees exactly the values the browser will act on. This
+over the raw string, so it sees exactly the values the browser will act on. The
+checked nodes themselves are inserted into the panel: the fragment is never
+serialised and re-parsed, because some markup (for example
+`<math><mtext><table><mglyph><style>` or nested `<form>`s) parses differently
+the second time and turns inert text into a live `<img onerror>` (mutation XSS;
+fixed in this release).
+
+`allowScripts` is on only for `true` or the string `"true"`. Any other value,
+including the string `"false"`, keeps the sanitiser on. A non-string
+`htmlTemplate` shows the placeholder.
+
+Bound searches that return zero rows never reach the viz: Dashboard Studio
+shows its own no-results placeholder in the panel instead. This
 is covered by the jest suite in `tests/`, including the specific payloads that
 defeated the pre-1.0.5 regex sanitiser. That's the right default for banners,
 SVG art, and KPI tiles. Only enable scripts for HTML you author or trust.
